@@ -40,6 +40,5 @@ if __name__ == "__main__":
         print("Final Ranking")
         for pos, comp in enumerate(l_bestCompetitors):
             print('%d: %s %s - Score: %.lf' % (pos+1, comp.name, comp.surname, comp.avg_score))
-        print()
         print("Best Country")
         print('%s - Total Score: %.lf' % (best_country, hCountryScores[best_country]))
