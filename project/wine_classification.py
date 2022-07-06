@@ -3,12 +3,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import scipy.stats as ss
 
-def mcol(v):
-    return v.reshape((v.size, 1))
 
-def mrow(v):
-    return v.reshape((1, v.size))
-
+# files loaded into numpy arrays
 def load_set(file_name):
     att_list = []
     class_list = []
@@ -24,6 +20,12 @@ def load_set(file_name):
                 pass
          
     return np.hstack(att_list), mrow(np.hstack(class_list))
+
+def mcol(v):
+    return v.reshape((v.size, 1))
+
+def mrow(v):
+    return v.reshape((1, v.size))
 
 # function to compute the mean of each feature row of a numpy array
 def compute_mean(X):
@@ -41,6 +43,74 @@ def compute_mean(X):
 def compute_cov(X):
     mu = compute_mean(X)
     return np.dot((X-mu), (X-mu).T)/X.shape[1]
+
+def correlation_matrix(data, feature_names):
+    correlation = np.corrcoef(data)
+    correlation_around = np.around(correlation, 1)
+    fig, ax = plt.subplots()
+    im = ax.imshow(correlation_around, cmap='coolwarm')
+
+    # show all ticks and label them with the respective list entries
+    ax.set_xticks(np.arange(len(feature_names)), labels=feature_names)
+    ax.set_yticks(np.arange(len(feature_names)), labels=feature_names)
+
+    # rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+            rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(feature_names)):
+        for j in range(len(feature_names)):
+            text = ax.text(j, i, correlation_around[i, j],
+                        ha="center", va="center", color="w", size=8)
+
+    ax.set_title("Correlation Coefficients")
+    fig.tight_layout()
+    plt.show()  
+
+def plot_hist(DTR, LTR, bool_save):
+    DTR_0 = DTR[:, LTR[0, :]==0]
+    DTR_1 = DTR[:, LTR[0, :]==1]
+    for i in range(DTR.shape[0]):
+        plt.figure()
+        plt.xlabel("Attribute %d" % (i))
+        plt.ylabel("Frequency")
+        plt.hist(DTR_0[i, :], 10, label = 'Class 0', histtype='stepfilled', alpha=0.5, linewidth=1)
+        plt.hist(DTR_1[i, :], 10, label = 'Class 1', histtype='stepfilled', alpha=0.5, linewidth=1)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        if bool_save:
+            plt.savefig('./project/graphs/hist_%d.pdf' % i)
+
+def plot_boxplot(DTR, LTR, bool_save):
+    DTR_0 = DTR[:, LTR[0, :]==0]
+    DTR_1 = DTR[:, LTR[0, :]==1]
+    for i in range(DTR.shape[0]):
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
+
+        ax1.boxplot(DTR_0[i, :],
+                    vert=True,  # vertical box alignment
+                    patch_artist=True,  # fill with color
+                    )  # will be used to label x-ticks
+
+        ax2.boxplot(DTR_1[i, :],
+                    vert=True,  # vertical box alignment
+                    patch_artist=True,  # fill with color
+                    )  # will be used to label x-ticks
+        ax1.set_title('Class 0')
+        ax2.set_title('Class 1')
+        for ax in [ax1, ax2]:
+            ax.yaxis.grid(True)
+            ax.set_xlabel('Attribute %d' % (i))
+            ax.set_ylabel('Observed values')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        if bool_save:
+            plt.savefig('./project/graphs/boxplot_%d.pdf' % i)
+        
+
 
 def logpdf_1sample(values, Mu, C):
 
@@ -105,38 +175,42 @@ def gaussianization(data):
     return gaussianized_data
 
 
-
-'''
-def correlation(DTR):
-
-def exploratory_data_analysis(DTR, LTR):
-    mu = compute_mean(DTR)
-    cov = compute_cov(DTR)
-'''
-
-
 if __name__ == '__main__':
 
+    # data sources
     train_fname = "./project/data/Train.txt"
     test_fname = "./project/data/Test.txt"
     
     # data and labels loading
     DTR, LTR = load_set(train_fname)
     DTE, LTE = load_set(test_fname)
+    feature_names = ["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", 
+                    "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol"]
 
     # data gaussianization
     DTR_g = gaussianization(DTR)
     DTE_g = gaussianization(DTE)
 
+    # heat map of correlation matrix
+    correlation_matrix(DTR_g, feature_names)
+
+    # data histogram plotting, raw and gaussianized
+    plot_hist(DTR, LTR, False)
+    # plot_hist(DTR, LTR, True)
+    plot_hist(DTR_g, LTR, False)
+    # plot_hist(DTR_g, LTR, True)
+
+    # raw data boxplot
+    plot_boxplot(DTR, LTR, False)
+    # plot_boxplot(DTR, LTR, True)
+
     # exploratory_data_analysis(DTR, LTR)
-    # plot_hist(DTR, LTR)
+
     # plot_boxplot(DTR, LTR)
     # plot_scatter(DTR, LTR)
-    # data_heatmap(DTR, LTR)
     # pca(DTR, LTR)
     # lda(DTR, LTR)
     # compute_dcf(LPred, LTE)
-    # feature_gaussianization(DTR, LTR)
     # logistic_regression(DTR, LTR, DTE, LTE)
     # support_vector_machines(DTR, LTR, DTE, LTE)
     # guassian_mixture_models(DTR, LTR, DTE, LTE)
