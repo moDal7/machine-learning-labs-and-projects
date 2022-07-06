@@ -23,7 +23,7 @@ def compute_mean(X):
 # function to compute the covariance matrix
 def compute_cov(X):
     mu = compute_mean(X)
-    return np.dot((X-mu), (X-mu).T)/X.shape[1] 
+    return np.dot((X-mu), (X-mu).T)/X.shape[1]
 
 def pca(iris_data, targets):
     
