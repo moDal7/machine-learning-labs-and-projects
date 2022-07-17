@@ -25,7 +25,7 @@ def compute_cov(X):
     mu = compute_mean(X)
     return np.dot((X-mu), (X-mu).T)/X.shape[1]
 
-def pca(iris_data, targets):
+def pca(iris_data):
     
 
     # mean computation for data centering, note that it will be a 1-D row array
@@ -57,7 +57,7 @@ def pca(iris_data, targets):
     # transformation into the new transform data matrix
     DY = np.hstack(DProjList)
 
-    return DY, targets
+    return DY
 
 def pcaPlot(D, L):
 
