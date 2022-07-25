@@ -1,9 +1,9 @@
-import sys
+from cmath import log
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import scipy.stats as ss
-import scipy.special
+import scipy.optimize as so
 
 
 # files loaded into numpy arrays
@@ -155,6 +155,20 @@ def plot_3dscatter(data, labels, bool_save):
     if bool_save:
             plt.savefig('./project/graphs/scatter3dpca.pdf')
 
+def gaussianization(data):
+    # rank computation 
+    rank_matrix = np.empty([data.shape[0], data.shape[1]])
+
+    for i in range(data.shape[0]):
+        rank_matrix[i, :] = ss.rankdata(data[i, :])
+    
+    rank_matrix = (rank_matrix)/(data.shape[1]+2)
+    
+    # ppf function from scipy.stats module 
+    gaussianized_data = norm.ppf(rank_matrix)
+
+    return gaussianized_data
+
 def pca(data, cov, num_components):
     
     # computation of the eigenvalues/eigenvectors: 
@@ -191,6 +205,88 @@ def logpdf_GAU_ND(X, mu, C):
     Y = [logpdf_1sample(X[:, i:i+1], mu, C) for i in range(X.shape[1])]
     return np.array(Y).ravel()
 
+def log_likelihood_ratio(log_scores):
+    scores = np.exp(log_scores)
+    llr = np.log(scores[1, :]/scores[0, :])
+    return llr
+
+def optimal_decision(llr, prior, Cfn, Cfp, threshold = None):
+    
+    if threshold is None:
+        threshold = -np.log(prior * Cfn) + np.log((1-prior) * Cfp)
+
+    label = llr > threshold
+
+    return label
+
+def confusion_matrix(pred, labels):
+    conf = np.zeros([2,2])
+    for i in range(2):  
+        for j in range(2):
+            conf[i, j] = ((pred == i ) * (labels == j)).sum()
+    return conf
+
+def compute_empirical_bayes(conf, prior, Cfn, Cfp):
+    fnr = conf[0,1] / (conf[0,1] + conf[1,1])
+    fpr = conf[1,0] / (conf[1,0] + conf[0,0])
+
+    return prior * Cfn * fnr + (1-prior) * Cfp * fpr
+
+def compute_normalized_bayes(conf, prior, Cfn, Cfp):
+    emp = compute_empirical_bayes(conf, prior, Cfn, Cfp)
+    return emp / min(prior * Cfn, (1-prior) * Cfp)
+
+def compute_DCF(scores, labels, prior, Cfn, Cfp, threshold = None):
+    pred = optimal_decision(scores, prior, Cfn, Cfp, threshold = threshold)
+    conf = confusion_matrix(pred, labels)
+    return compute_normalized_bayes(conf, prior, Cfn, Cfp)
+
+def compute_min_DCF(scores, labels, prior, Cfn, Cfp):
+    
+    thresholds = np.array(scores)
+    thresholds.sort()
+    np.concatenate([np.array([-np.inf]), thresholds, np.array([np.inf])])
+    dcf = []
+    for th in thresholds:
+        dcf.append(compute_DCF(scores, labels, prior, Cfn, Cfp, threshold = th))
+    
+    return np.array(dcf).min()
+
+def roc(llr, labels, bool_save):
+    thresholds = np.array(llr)
+    thresholds.sort()
+    thresholds = np.concatenate([np.array([-np.inf]), thresholds, np.array([np.inf])])
+    FPR = np.zeros(thresholds.size)
+    TPR = np.zeros(thresholds.size)
+
+    for idx, t in enumerate(thresholds):
+        pred = np.int32(llr > t)
+        confusion = confusion_matrix(pred, labels)
+
+        TPR[idx] = confusion[1,1] / (confusion[1,1] + confusion[0,1])
+        FPR[idx] = confusion[1,0] / (confusion[1,0] + confusion[0,0])
+    
+    plt.figure()
+    plt.xlabel("FPR")
+    plt.ylabel("TPR")
+    plt.plot(FPR, TPR)
+    plt.tight_layout()
+    plt.show()
+    if bool_save:
+        plt.savefig('./project/graphs/roc_curve')
+
+def bayes_plots(scores, labels, parray, minCost = False):
+    y = []
+    for pi in parray:
+        prior = 1 / (1 + np.exp(-pi))
+        if minCost:
+            y.append(compute_min_DCF(scores, labels, prior, 1, 1))
+        else:
+            y.append(compute_DCF(scores, labels, prior, 1, 1))
+    
+    return np.array(y)
+
+
 def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
@@ -210,20 +306,67 @@ def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     log_scores[0, :] = mrow(logpdf_GAU_ND(DTE, mu_0, cov_0))
     log_scores[1, :] = mrow(logpdf_GAU_ND(DTE, mu_1, cov_1))
     
-    priors = [0, 0]
-    for i in range(len(lab)):
-       priors[i] = (LTR[0, :]==i).sum(0)/LTR.shape[1]
+    llr = log_likelihood_ratio(log_scores)
 
-    log_j_scores = np.empty([len(lab), DTE.shape[1]])
-    log_j_scores[0, :] = log_scores[0, :] + np.log(priors[0])
-    log_j_scores[1, :] = log_scores[1, :] + np.log(priors[1])
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
 
-    logSMarginal = scipy.special.logsumexp(log_j_scores, axis=0)
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
 
-    log_post1 = np.exp(log_j_scores - logSMarginal)
-    LPred = log_post1.argmax(0)
-    # compare_j_scores = np.load('labs/lab5_results/SJoint_MVG.npy')
-    print("Accuracy: %f" % ((LTE[0, :]==LPred).sum(0)/LTE.shape[1])) 
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    if (see_graphs):
+        roc(llr, LTE, False)
+    
+        parray = np.linspace(-3, 3, 21)
+        bayes_dcf = bayes_plots(llr, LTE, parray, False)
+        bayes_min = bayes_plots(llr, LTE, parray, True)
+        plt.figure()
+        plt.xlabel("p")
+        plt.ylabel("DCF")
+        plt.plot(parray, bayes_dcf)
+        plt.plot(parray, bayes_min)
+        plt.tight_layout()
+        plt.show()
 
 def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
@@ -245,20 +388,68 @@ def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     log_scores[0, :] = mrow(logpdf_GAU_ND(DTE, mu_0, cov_0))
     log_scores[1, :] = mrow(logpdf_GAU_ND(DTE, mu_1, cov_1))
     
-    priors = [0, 0]
-    for i in range(len(lab)):
-       priors[i] = (LTR[0, :]==i).sum(0)/LTR.shape[1]
+    llr = log_likelihood_ratio(log_scores)
 
-    log_j_scores = np.empty([len(lab), DTE.shape[1]])
-    log_j_scores[0, :] = log_scores[0, :] + np.log(priors[0])
-    log_j_scores[1, :] = log_scores[1, :] + np.log(priors[1])
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
 
-    logSMarginal = scipy.special.logsumexp(log_j_scores, axis=0)
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
 
-    log_post1 = np.exp(log_j_scores - logSMarginal)
-    LPred = log_post1.argmax(0)
-    # compare_j_scores = np.load('labs/lab5_results/SJoint_MVG.npy')
-    print("Accuracy: %f" % ((LTE[0, :]==LPred).sum(0)/LTE.shape[1])) 
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+
+    if (see_graphs):
+        roc(llr, LTE, False)
+
+        parray = np.linspace(-3, 3, 21)
+        bayes_dcf = bayes_plots(llr, LTE, parray, False)
+        bayes_min = bayes_plots(llr, LTE, parray, True)
+        plt.figure()
+        plt.xlabel("p")
+        plt.ylabel("DCF")
+        plt.plot(parray, bayes_dcf)
+        plt.plot(parray, bayes_min)
+        plt.tight_layout()
+        plt.show()
 
 def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
@@ -278,20 +469,68 @@ def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     log_scores[0, :] = mrow(logpdf_GAU_ND(DTE, mu_0, cov))
     log_scores[1, :] = mrow(logpdf_GAU_ND(DTE, mu_1, cov))
     
-    priors = [0, 0]
-    for i in range(len(lab)):
-       priors[i] = (LTR[0, :]==i).sum(0)/LTR.shape[1]
+    llr = log_likelihood_ratio(log_scores)
+    
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
 
-    log_j_scores = np.empty([len(lab), DTE.shape[1]])
-    log_j_scores[0, :] = log_scores[0, :] + np.log(priors[0])
-    log_j_scores[1, :] = log_scores[1, :] + np.log(priors[1])
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
 
-    logSMarginal = scipy.special.logsumexp(log_j_scores, axis=0)
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
 
-    log_post1 = np.exp(log_j_scores - logSMarginal)
-    LPred = log_post1.argmax(0)
-    # compare_j_scores = np.load('labs/lab5_results/SJoint_MVG.npy')
-    print("Accuracy: %f" % ((LTE[0, :]==LPred).sum(0)/LTE.shape[1])) 
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    if (see_graphs):
+        roc(llr, LTE, False)
+
+        parray = np.linspace(-3, 3, 21)
+        bayes_dcf = bayes_plots(llr, LTE, parray, False)
+        bayes_min = bayes_plots(llr, LTE, parray, True)
+        plt.figure()
+        plt.xlabel("p")
+        plt.ylabel("DCF")
+        plt.plot(parray, bayes_dcf)
+        plt.plot(parray, bayes_min)
+        plt.tight_layout()
+        plt.show()
+
 
 def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
@@ -311,34 +550,145 @@ def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     log_scores[0, :] = mrow(logpdf_GAU_ND(DTE, mu_0, cov))
     log_scores[1, :] = mrow(logpdf_GAU_ND(DTE, mu_1, cov))
     
-    priors = [0, 0]
-    for i in range(len(lab)):
-       priors[i] = (LTR[0, :]==i).sum(0)/LTR.shape[1]
-
-    log_j_scores = np.empty([len(lab), DTE.shape[1]])
-    log_j_scores[0, :] = log_scores[0, :] + np.log(priors[0])
-    log_j_scores[1, :] = log_scores[1, :] + np.log(priors[1])
-
-    logSMarginal = scipy.special.logsumexp(log_j_scores, axis=0)
-
-    log_post1 = np.exp(log_j_scores - logSMarginal)
-    LPred = log_post1.argmax(0)
-    # compare_j_scores = np.load('labs/lab5_results/SJoint_MVG.npy')
-    print("Accuracy: %f" % ((LTE[0, :]==LPred).sum(0)/LTE.shape[1])) 
-
-def gaussianization(data):
-    # rank computation 
-    rank_matrix = np.empty([data.shape[0], data.shape[1]])
-
-    for i in range(data.shape[0]):
-        rank_matrix[i, :] = ss.rankdata(data[i, :])
+    llr = log_likelihood_ratio(log_scores)
     
-    rank_matrix = (rank_matrix)/(data.shape[1]+2)
-    
-    # ppf function from scipy.stats module 
-    gaussianized_data = norm.ppf(rank_matrix)
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
 
-    return gaussianized_data
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    if (see_graphs):
+        roc(llr, LTE, False)
+
+        parray = np.linspace(-3, 3, 21)
+        bayes_dcf = bayes_plots(llr, LTE, parray, False)
+        bayes_min = bayes_plots(llr, LTE, parray, True)
+        plt.figure()
+        plt.xlabel("p")
+        plt.ylabel("DCF")
+        plt.plot(parray, bayes_dcf)
+        plt.plot(parray, bayes_min)
+        plt.tight_layout()
+        plt.show()
+
+def logreg_wrapper(DTR, LTR, l):
+    labels = LTR * 2.0 - 1.0
+    num_features = DTR.shape[0]
+    def logreg(v):
+        w = mcol(v[0:num_features])
+        b = v[-1]
+        S = np.dot(w.T, DTR) + b
+        cxe = np.logaddexp(0, -S*labels).mean()
+        return cxe + 0.5*l * np.linalg.norm(w)**2
+    return logreg
+
+def logistic_regression(DTR, LTR, DTE, LTE, lamb):
+    logreg_obj = logreg_wrapper(DTR, LTR, lamb)
+    _v, _J, _d = so.fmin_l_bfgs_b(logreg_obj, np.zeros(DTR.shape[0]+1), approx_grad = True)
+    _w = _v[0:DTR.shape[0]]
+    _b = _v[-1]
+    scores_posteriors = np.dot(_w.T, DTE) + _b
+
+    empirical_prior = (LTR[0, :]==1).sum(0)/LTR.shape[1]
+
+    scores = scores_posteriors - log(empirical_prior/(1-empirical_prior))
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = empirical_prior
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("Empirical prior test:")
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
 
 
 if __name__ == '__main__':
@@ -480,10 +830,39 @@ if __name__ == '__main__':
     print()
     print("/////////////////////////////////////////////////////////////")
 
-    # compute_dcf(LPred, LTE)
-    # roc curve
-    # bayes diagram
-    # logistic_regression(DTR, LTR, DTE, LTE)
+    print()
+    print("Raw Data")
+    for lamb in [1e-6, 1e-3, 0.1, 1.0]:
+        print()
+        print("")
+        print("Lambda value: %2f" % lamb)
+        logistic_regression(DTR, LTR, DTE, LTE, lamb)
+    
+    print()
+    print("/////////////////////////////////////////////////////////////")
+
+    print()
+    print("Gaussianized Data")
+    for lamb in [1e-6, 1e-3, 0.1, 1.0]:
+        print()
+        print("")
+        print("Lambda value: %2f" % lamb)
+        logistic_regression(DTR_g, LTR, DTE_g, LTE, lamb)
+    
+    print()
+    print("/////////////////////////////////////////////////////////////")
+
+    print()
+    print("Pca Data")
+    for lamb in [1e-6, 1e-3, 0.1, 1.0]:
+        print()
+        print("Lambda value: %2f" % lamb)
+        print()
+        logistic_regression(pca_DTR, LTR, pca_DTE, LTE, lamb)
+    
+    print()
+    print("/////////////////////////////////////////////////////////////")
+        
     # support_vector_machines(DTR, LTR, DTE, LTE)
     # guassian_mixture_models(DTR, LTR, DTE, LTE)
     # commenting hard
