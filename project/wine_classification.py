@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import scipy.stats as ss
 import scipy.optimize as so
+import scipy.special as sp
 
 
 # files loaded into numpy arrays
@@ -23,13 +24,15 @@ def load_set(file_name):
          
     return np.hstack(att_list), mrow(np.hstack(class_list))
 
+# mcol function: reshapes the array into a column array
 def mcol(v):
     return v.reshape((v.size, 1))
 
+# mrow function: reshapes the array into a row array
 def mrow(v):
     return v.reshape((1, v.size))
 
-# function to compute the mean of each feature row of a numpy array
+# function to compute the mean of each feature of a numpy array
 def compute_mean(X):
 
     empirical_mean=np.array([])
@@ -41,11 +44,12 @@ def compute_mean(X):
 
     return empirical_mean.reshape(empirical_mean.size, 1)
 
-# function to compute the covariance matrix
+# function to compute the covariance matrix of the dataset
 def compute_cov(X):
     mu = compute_mean(X)
     return np.dot((X-mu), (X-mu).T)/X.shape[1]
 
+# function to compute the correlation matrix of the dataset, and to plot the correlation heatmap
 def correlation_matrix(data, feature_names):
     correlation = np.corrcoef(data)
     correlation_around = np.around(correlation, 1)
@@ -70,6 +74,8 @@ def correlation_matrix(data, feature_names):
     fig.tight_layout()
     plt.show()  
 
+# general exploratory data analysis of the whole dataset, featuring means, covariance matrix and skewness of the data
+# prints out the data on the terminal
 def eda(data, labels, feature_names):
     mean = compute_mean(data)
     mean_0 = compute_mean(data[:, labels[0, :]==0])
@@ -97,6 +103,7 @@ def eda(data, labels, feature_names):
 
     return mean, mean_0, mean_1, cov
 
+# function to plot histograms of the features, to analyze feature distribution
 def plot_hist(DTR, LTR, bool_save):
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -112,6 +119,7 @@ def plot_hist(DTR, LTR, bool_save):
         if bool_save:
             plt.savefig('./project/graphs/hist_%d.pdf' % i)
 
+# function to plot boxplots of the features, to analyze feature distribution and highlight outliers
 def plot_boxplot(DTR, LTR, bool_save):
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -139,6 +147,7 @@ def plot_boxplot(DTR, LTR, bool_save):
         if bool_save:
             plt.savefig('./project/graphs/boxplot_%d.pdf' % i)
 
+# function to plot 3d scatter of three features at the same time, potential use along with PCA = 3
 def plot_3dscatter(data, labels, bool_save):
 
     fig = plt.figure()
@@ -155,8 +164,10 @@ def plot_3dscatter(data, labels, bool_save):
     if bool_save:
             plt.savefig('./project/graphs/scatter3dpca.pdf')
 
+# gaussianization process of the data
 def gaussianization(data):
-    # rank computation 
+
+    # rank computation: gives each sample a rank compared to other samples
     rank_matrix = np.empty([data.shape[0], data.shape[1]])
 
     for i in range(data.shape[0]):
@@ -164,11 +175,13 @@ def gaussianization(data):
     
     rank_matrix = (rank_matrix)/(data.shape[1]+2)
     
-    # ppf function from scipy.stats module 
+    # ppf function from scipy.stats module / inverse of probability density function
+    # hard to write, easier to solve numerically 
     gaussianized_data = norm.ppf(rank_matrix)
 
     return gaussianized_data
 
+# function to perform Principal Component Analysis, with the desired number of components to extract as parameter
 def pca(data, cov, num_components):
     
     # computation of the eigenvalues/eigenvectors: 
@@ -192,7 +205,8 @@ def pca(data, cov, num_components):
     DY = np.hstack(DProjList)
 
     return DY
-        
+
+# compute logarithmic probability density function for each sample        
 def logpdf_1sample(values, Mu, C):
 
     #computation of the logMultiVariateGaussian for each sample
@@ -205,11 +219,13 @@ def logpdf_GAU_ND(X, mu, C):
     Y = [logpdf_1sample(X[:, i:i+1], mu, C) for i in range(X.shape[1])]
     return np.array(Y).ravel()
 
+# transform the class conditional scores into log-likelihood ratios
 def log_likelihood_ratio(log_scores):
     scores = np.exp(log_scores)
     llr = np.log(scores[1, :]/scores[0, :])
     return llr
 
+# function to compute the optimal bayes decision based on threshold
 def optimal_decision(llr, prior, Cfn, Cfp, threshold = None):
     
     if threshold is None:
@@ -219,6 +235,7 @@ def optimal_decision(llr, prior, Cfn, Cfp, threshold = None):
 
     return label
 
+# compute values for the confusion matrix 
 def confusion_matrix(pred, labels):
     conf = np.zeros([2,2])
     for i in range(2):  
@@ -236,11 +253,13 @@ def compute_normalized_bayes(conf, prior, Cfn, Cfp):
     emp = compute_empirical_bayes(conf, prior, Cfn, Cfp)
     return emp / min(prior * Cfn, (1-prior) * Cfp)
 
+# compute values for the detection cost function, considering the normalized
 def compute_DCF(scores, labels, prior, Cfn, Cfp, threshold = None):
     pred = optimal_decision(scores, prior, Cfn, Cfp, threshold = threshold)
     conf = confusion_matrix(pred, labels)
     return compute_normalized_bayes(conf, prior, Cfn, Cfp)
 
+# compute the minimum DCF recalibrating the scores
 def compute_min_DCF(scores, labels, prior, Cfn, Cfp):
     
     thresholds = np.array(scores)
@@ -252,6 +271,7 @@ def compute_min_DCF(scores, labels, prior, Cfn, Cfp):
     
     return np.array(dcf).min()
 
+# roc diagram 
 def roc(llr, labels, bool_save):
     thresholds = np.array(llr)
     thresholds.sort()
@@ -275,6 +295,7 @@ def roc(llr, labels, bool_save):
     if bool_save:
         plt.savefig('./project/graphs/roc_curve')
 
+# bayes plots to verify effectiveness of classifiers 
 def bayes_plots(scores, labels, parray, minCost = False):
     y = []
     for pi in parray:
@@ -286,7 +307,7 @@ def bayes_plots(scores, labels, parray, minCost = False):
     
     return np.array(y)
 
-
+# wrapper function for the various steps of MVG classifier
 def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
@@ -368,6 +389,7 @@ def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
         plt.tight_layout()
         plt.show()
 
+# wrapper function for the various steps of MVG classifier with Naive Bayes hypothesis
 def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
@@ -451,6 +473,7 @@ def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
         plt.tight_layout()
         plt.show()
 
+# wrapper function for the various steps of MVG classifier with Tied covariances matrix
 def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
@@ -531,7 +554,7 @@ def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
         plt.tight_layout()
         plt.show()
 
-
+# wrapper function for the various steps of MVG classifier with Naive Bayes hypothesis and tied covariance matrix
 def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
@@ -612,6 +635,7 @@ def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
         plt.tight_layout()
         plt.show()
 
+# wrapper function for logistic regression
 def logreg_wrapper(DTR, LTR, l):
     labels = LTR * 2.0 - 1.0
     num_features = DTR.shape[0]
@@ -623,6 +647,8 @@ def logreg_wrapper(DTR, LTR, l):
         return cxe + 0.5*l * np.linalg.norm(w)**2
     return logreg
 
+# function to perform the classification with logistic regression, transforming the scores into scores with
+# probability interpretation, to be able to perform Min DCF computation
 def logistic_regression(DTR, LTR, DTE, LTE, lamb):
     logreg_obj = logreg_wrapper(DTR, LTR, lamb)
     _v, _J, _d = so.fmin_l_bfgs_b(logreg_obj, np.zeros(DTR.shape[0]+1), approx_grad = True)
@@ -689,6 +715,472 @@ def logistic_regression(DTR, LTR, DTE, LTE, lamb):
     print("Minimum DCF: %f" % (min_DCF))
     print()
 
+# Support Vector Machine linear classifier 
+def svm_linear(DTR, LTR, C, K = 1):
+
+    DTREXT = np.vstack([DTR, np.ones(1, DTR.shape[1])*K])
+
+    z = np.zeros(LTR.shape)
+    z[LTR == 1] = 1
+    z[LTR == 0] = -1
+
+    # Hij matrix, second operation exploits broadcasting to perform the multiplication
+    H = np.dot(DTREXT.T, DTREXT)
+    H = mcol(z)*mrow(z)*H
+
+    # alpha is the Lagrangian multiplier
+    def Jdual(alpha):
+        Ha = np.dot(H, mcol(alpha))
+        aHa = np.dot(mrow(alpha), Ha)
+        a1 = alpha.sum()
+
+        return -0.5 * aHa.ravel() + a1,  -Ha.ravel() + np.ones(alpha.size)
+
+    def Ldual(alpha):
+        loss, grad = Jdual(alpha)
+        return -loss, -grad
+
+    def Jprimal(w):
+        S = np.dot(mrow(w), DTREXT)
+        loss = np.maximum(np.zeros(S.shape), 1-z*S).sum()
+        return 0.5 * np.linalg.norm(w)**2 + C * loss
+        
+    alphastar, _x, _y = so.fmin_l_bfgs_b(
+        Ldual,
+        np.zeros(DTR.shape[1]),
+        bounds = [(0, C)] * DTR.shape[1],
+        factr = 1.0,
+        maxiter = 100000,
+        maxfun = 100000,
+        )
+
+    wstar = np.dot(DTREXT, mcol(alphastar) * mcol(z))
+
+# Gaussian Mixture Model per sample log-likelihood computation 
+def GMM_ll_perSample(X, gmm):
+
+    G = len(gmm)
+    N = X.shape[1]
+    S = np.zeros((G, N))
+    for g in range(G):
+        S[g, :] = logpdf_GAU_ND(X, gmm[g][1], gmm[g][2]) + np.log(gmm[g][0])
+    return sp.logsumexp(S, axis = 0)
+
+# Gaussian Mixture Model EM algorithm
+def GMM_EM(X, gmm):
+    llNew = None
+    llOld = None
+    G = len(gmm)
+    N = X.shape[1]
+
+    while llOld is None or llNew - llOld > 1e-6:
+        llOld = llNew
+        SJ = np.zeros((G, N))
+        for g in range(G):
+            SJ[g, :] = logpdf_GAU_ND(X, gmm[g][1], gmm[g][2]) + np.log(gmm[g][0])
+        SM = sp.logsumexp(SJ, axis = 0)
+        llNew = SM.sum()/N
+        P = np.exp(SJ - SM)
+        gmmNew = []
+
+        for g in range(G):
+            gamma = P[g, :]
+            Z = gamma.sum()
+            F = (mrow(gamma)*X).sum(1)
+            S = np.dot(X, (mrow(gamma)*X).T)
+            w = Z/N
+            mu = mcol(F/N)
+            Sigma = S/N - np.dot(mu, mu.T)
+            Sigma = eigen_constraint(Sigma)
+
+            gmmNew.append([w, mu, Sigma])
+
+        gmm = gmmNew
+    
+    return gmm 
+
+# Gaussian Mixture Model EM algorithm with diagonal covariance matrix hypothesis
+def GMM_EM_diagonal(X, gmm):
+    llNew = None
+    llOld = None
+    G = len(gmm)
+    N = X.shape[1]
+
+    while llOld is None or llNew - llOld > 1e-6:
+        llOld = llNew
+        SJ = np.zeros((G, N))
+        for g in range(G):
+            SJ[g, :] = logpdf_GAU_ND(X, gmm[g][1], gmm[g][2]) + np.log(gmm[g][0])
+        SM = sp.logsumexp(SJ, axis = 0)
+        llNew = SM.sum()/N
+        P = np.exp(SJ - SM)
+        gmmNew = []
+
+        for g in range(G):
+            gamma = P[g, :]
+            Z = gamma.sum()
+            F = (mrow(gamma)*X).sum(1)
+            S = np.dot(X, (mrow(gamma)*X).T)
+            w = Z/N
+            mu = mcol(F/N)
+            Sigma = S/N - np.dot(mu, mu.T)
+
+            Sigma = Sigma * np.eye(Sigma.shape[0])
+            Sigma = eigen_constraint(Sigma)
+
+            gmmNew.append([w, mu, Sigma])
+
+        gmm = gmmNew
+    
+    return gmm 
+
+# Gaussian Mixture Model EM algorithm with tied covariance matrix hypothesis
+def GMM_EM_tied(X, gmm):
+    llNew = None
+    llOld = None
+    G = len(gmm)
+    N = X.shape[1]
+
+    while llOld is None or llNew - llOld > 1e-6:
+        llOld = llNew
+        SJ = np.zeros((G, N))
+        for g in range(G):
+            SJ[g, :] = logpdf_GAU_ND(X, gmm[g][1], gmm[g][2]) + np.log(gmm[g][0])
+        SM = sp.logsumexp(SJ, axis = 0)
+        llNew = SM.sum()/N
+        P = np.exp(SJ - SM)
+        gmmNew = []
+
+        for g in range(G):
+            gamma = P[g, :]
+            Z = gamma.sum()
+            F = (mrow(gamma)*X).sum(1)
+            S = np.dot(X, (mrow(gamma)*X).T)
+            w = Z/N
+            mu = mcol(F/N)
+            Sigma = S/N - np.dot(mu, mu.T)
+           
+
+            gmmNew.append([w, mu, Sigma])
+        
+        Sigma_tied = np.empty_like(gmmNew[0][2])
+
+        for g in range(G):
+            Sigma_tied = Z*gmmNew[g][2] + Sigma_tied
+
+        Sigma_tied = Sigma_tied/N
+        Sigma_tied = eigen_constraint(Sigma_tied)
+
+        for g in range(G):
+            gmmNew[g][2] = Sigma_tied
+            
+        gmm = gmmNew
+    
+    return gmm 
+
+# Gaussian Mixture Model LBG algorithm to generate initial gaussian components
+def GMM_lbg(gmm, iter):
+
+    gmm_new = []
+    alpha = 0.1
+
+    if iter:
+        gmm_1 = np.array(np.empty(3), dtype=object)
+        gmm_2 = np.array(np.empty(3), dtype=object)
+
+        gmm_1[0]= gmm[0]/2
+        gmm_2[0]= gmm[0]/2
+    
+        U, s, Vh = np.linalg.svd(gmm[2])
+        d = U[:, 0:1] * s[0]**0.5 * alpha
+
+        gmm_1[1]= gmm[1] + d
+        gmm_2[1]= gmm[1] - d
+
+        gmm_1[2] = gmm[2]
+        gmm_2[2] = gmm[2]
+
+        gmm_new.append(gmm_1)
+        gmm_new.append(gmm_2)
+
+    else:
+
+        for g in range(len(gmm)):
+
+            gmm_1 = np.array(np.empty(3), dtype=object)
+            gmm_2 = np.array(np.empty(3), dtype=object)
+
+            gmm_1[0]= gmm[g][0]/2
+            gmm_2[0]= gmm[g][0]/2
+        
+            U, s, Vh = np.linalg.svd(gmm[g][2])
+            d = U[:, 0:1] * s[0]**0.5 * alpha
+
+            gmm_1[1]= gmm[g][1] + d
+            gmm_2[1]= gmm[g][1] - d
+
+            gmm_1[2] = gmm[g][2]
+            gmm_2[2] = gmm[g][2]
+
+            gmm_new.append(gmm_1)
+            gmm_new.append(gmm_2)
+    
+    return gmm_new
+
+# eigenvalues constraints to avoid degenerate solutions
+def eigen_constraint(cov):
+
+    psi = 0.01
+
+    U, s, _ = np.linalg.svd(cov)
+    s[s<psi] = psi
+    cov = np.dot(U, mcol(s)*U.T)
+
+    return cov
+
+
+# GMM classifier wrapper function
+def GMM_classifier(DTR, LTR, DTE, LTE):
+
+    DTR_0 = DTR[:, LTR[0, :]==0]
+    DTR_1 = DTR[:, LTR[0, :]==1]
+
+    lab = [0,1]
+
+    mu_0 = np.empty([DTR.shape[0], 1])
+    mu_0 = compute_mean(DTR_0)
+    mu_1 = np.empty([DTR.shape[0], 1])
+    mu_1 = compute_mean(DTR_1)
+
+    cov_0 = eigen_constraint(compute_cov(DTR_0))
+    cov_1 = eigen_constraint(compute_cov(DTR_1))
+    
+    gmm_class0 = np.array([1, mu_0, cov_0], dtype=object)
+    gmm_class0 = GMM_lbg(gmm_class0, True)
+    gmm_class0 = GMM_EM(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM(DTR_0, gmm_class0)
+
+    gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
+    gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
+    gmm_class1 = GMM_EM(DTR_1, gmm_class1)
+
+    log_scores = np.empty([len(lab), DTE.shape[1]])
+
+    log_scores[0, :] = mrow(GMM_ll_perSample(DTE, gmm_class0))
+    log_scores[1, :] = mrow(GMM_ll_perSample(DTE, gmm_class1))
+
+    llr = log_likelihood_ratio(log_scores)
+    
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+# GMM classifier with naive Bayes hypothesis wrapper function
+def GMM_naivebayes_classifier(DTR, LTR, DTE, LTE):
+
+    DTR_0 = DTR[:, LTR[0, :]==0]
+    DTR_1 = DTR[:, LTR[0, :]==1]
+
+    lab = [0,1]
+
+    mu_0 = np.empty([DTR.shape[0], 1])
+    mu_0 = compute_mean(DTR_0)
+    mu_1 = np.empty([DTR.shape[0], 1])
+    mu_1 = compute_mean(DTR_1)
+
+    cov_0 = eigen_constraint(compute_cov(DTR_0))
+    cov_1 = eigen_constraint(compute_cov(DTR_1))
+    
+    gmm_class0 = np.array([1, mu_0, cov_0], dtype=object)
+    gmm_class0 = GMM_lbg(gmm_class0, True)
+    gmm_class0 = GMM_EM_diagonal(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM_diagonal(DTR_0, gmm_class0)
+
+    gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
+    gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM_diagonal(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
+    gmm_class1 = GMM_EM_diagonal(DTR_1, gmm_class1)
+
+    log_scores = np.empty([len(lab), DTE.shape[1]])
+
+    log_scores[0, :] = mrow(GMM_ll_perSample(DTE, gmm_class0))
+    log_scores[1, :] = mrow(GMM_ll_perSample(DTE, gmm_class1))
+
+    llr = log_likelihood_ratio(log_scores)
+    
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+# GMM classifier with Tied Covariance wrapper function
+def GMM_tiedcov_classifier(DTR, LTR, DTE, LTE):
+
+    DTR_0 = DTR[:, LTR[0, :]==0]
+    DTR_1 = DTR[:, LTR[0, :]==1]
+
+    lab = [0,1]
+
+    mu_0 = np.empty([DTR.shape[0], 1])
+    mu_0 = compute_mean(DTR_0)
+    mu_1 = np.empty([DTR.shape[0], 1])
+    mu_1 = compute_mean(DTR_1)
+
+    cov_0 = eigen_constraint(compute_cov(DTR_0))
+    cov_1 = eigen_constraint(compute_cov(DTR_1))
+    
+    gmm_class0 = np.array([1, mu_0, cov_0], dtype=object)
+    gmm_class0 = GMM_lbg(gmm_class0, True)
+    gmm_class0 = GMM_EM_tied(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM_tied(DTR_0, gmm_class0)
+
+    gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
+    gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM_tied(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
+    gmm_class1 = GMM_EM_tied(DTR_1, gmm_class1)
+
+    log_scores = np.empty([len(lab), DTE.shape[1]])
+
+    log_scores[0, :] = mrow(GMM_ll_perSample(DTE, gmm_class0))
+    log_scores[1, :] = mrow(GMM_ll_perSample(DTE, gmm_class1))
+
+    llr = log_likelihood_ratio(log_scores)
+    
+    # application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.8
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.2
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 10
+    Cfp = 1
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+    prior = 0.5
+    Cfn = 1
+    Cfp = 10
+    min_DCF = compute_min_DCF(llr, LTE, prior, Cfn, Cfp)
+
+    print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
 
 
 if __name__ == '__main__':
@@ -862,8 +1354,63 @@ if __name__ == '__main__':
     
     print()
     print("/////////////////////////////////////////////////////////////")
+
+    '''
+    gaussian mixture models classifier results
+    '''
+    print()
+    print("GMM with raw data:")
+    GMM_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("GMM with gaussianized data:")
+    GMM_classifier(DTR_g, LTR, DTE_g, LTE)
+    print()
+    print("GMM with PCA with components = 10 and raw data:")
+    GMM_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    print()
+    print("GMM with PCA with components = 10 and gaussianized data:")
+    GMM_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    print()
+    print("/////////////////////////////////////////////////////////////")
+
+    '''
+    gaussian mixture models naive bayes classifier results
+    '''
+    print()
+    print("GMM naive Bayes with raw data:")
+    GMM_naivebayes_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("GMM naive Bayes with gaussianized data:")
+    GMM_naivebayes_classifier(DTR_g, LTR, DTE_g, LTE)
+    print()
+    print("GMM naive Bayes with PCA with components = 10 and raw data:")
+    GMM_naivebayes_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    print()
+    print("GMM naive Bayes with PCA with components = 10 and gaussianized data:")
+    GMM_naivebayes_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    print()
+    print("/////////////////////////////////////////////////////////////")
+
+    '''
+    gaussian mixture models naive bayes classifier results
+    '''
+    print()
+    print("GMM tied covariance with raw data:")
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("GMM tied covariance with gaussianized data:")
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("GMM tied covariance with PCA with components = 10 and raw data:")
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("GMM tied covariance with PCA with components = 10 and gaussianized data:")
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    print()
+    print("/////////////////////////////////////////////////////////////")
+
         
     # support_vector_machines(DTR, LTR, DTE, LTE)
-    # guassian_mixture_models(DTR, LTR, DTE, LTE)
-    # commenting hard
+    # fix graphs / make em prettier
+    # save graphs
     # write the report ehy ?
