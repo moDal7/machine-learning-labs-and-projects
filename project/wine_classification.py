@@ -1,6 +1,7 @@
 from cmath import log
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from scipy.stats import norm
 import scipy.stats as ss
 import scipy.optimize as so
@@ -105,14 +106,17 @@ def eda(data, labels, feature_names):
 
 # function to plot histograms of the features, to analyze feature distribution
 def plot_hist(DTR, LTR, bool_save):
+
+    feature_names = ["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", 
+                "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol"]
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
     for i in range(DTR.shape[0]):
         plt.figure()
-        plt.xlabel("Attribute %d" % (i))
+        plt.xlabel("Attribute %d - %s" % (i, feature_names[i]))
         plt.ylabel("Frequency")
-        plt.hist(DTR_0[i, :], 10, label = 'Class 0', histtype='stepfilled', alpha=0.5, linewidth=1)
-        plt.hist(DTR_1[i, :], 10, label = 'Class 1', histtype='stepfilled', alpha=0.5, linewidth=1)
+        plt.hist(DTR_0[i, :], 15, density = True, label = 'Class 0', histtype='stepfilled', color = 'firebrick', alpha=0.7, linewidth=1)
+        plt.hist(DTR_1[i, :], 15, density = True, label = 'Class 1', histtype='stepfilled', color = 'navy', alpha=0.7, linewidth=1)
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -121,28 +125,49 @@ def plot_hist(DTR, LTR, bool_save):
 
 # function to plot boxplots of the features, to analyze feature distribution and highlight outliers
 def plot_boxplot(DTR, LTR, bool_save):
+
+    feature_names = ["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", 
+                "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol"]
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
     for i in range(DTR.shape[0]):
-        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
+        fig, ax = plt.subplots()
+        #fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
+        c0 = 'firebrick'
+        c0b = 'indianred'
+        c1 = 'navy'
+        c1b = 'cornflowerblue'
+        bp1 = ax.boxplot(DTR_0[i, :],
+                    positions = [0],
+                    notch=True, 
+                    patch_artist=True,
+                    boxprops=dict(facecolor=c0b, color=c0),
+                    capprops=dict(color=c0),
+                    whiskerprops=dict(color=c0),
+                    flierprops=dict(color=c0, markeredgecolor=c0),
+                    medianprops=dict(color=c0),
+                    )
 
-        ax1.boxplot(DTR_0[i, :],
-                    vert=True,  # vertical box alignment
-                    patch_artist=True,  # fill with color
-                    )  # will be used to label x-ticks
-
-        ax2.boxplot(DTR_1[i, :],
-                    vert=True,  # vertical box alignment
-                    patch_artist=True,  # fill with color
-                    )  # will be used to label x-ticks
-        ax1.set_title('Class 0')
-        ax2.set_title('Class 1')
-        for ax in [ax1, ax2]:
-            ax.yaxis.grid(True)
-            ax.set_xlabel('Attribute %d' % (i))
-            ax.set_ylabel('Observed values')
-        plt.legend()
-        plt.tight_layout()
+        bp2 = ax.boxplot(DTR_1[i, :],
+                    positions = [1],
+                    notch=True, 
+                    patch_artist=True,
+                    boxprops=dict(facecolor=c1b, color=c1),
+                    capprops=dict(color=c1),
+                    whiskerprops=dict(color=c1),
+                    flierprops=dict(color=c1, markeredgecolor=c1),
+                    medianprops=dict(color=c1),
+                    )  
+        #ax1.set_title('Class 0')
+        #ax2.set_title('Class 1')
+        #for ax in [ax1, ax2]:
+        #ax.yaxis.grid(True)
+        ax.set_xlabel('Attribute %d - %s' % (i, feature_names[i]))
+        ax.set_ylabel('Observed values')
+        red_patch = mpatches.Patch(color='firebrick', label='Class 0')
+        blue_patch = mpatches.Patch(color='navy', label='Class 1')
+        ax.legend(handles=[red_patch, blue_patch])
+        # plt.tight_layout()
         plt.show()
         if bool_save:
             plt.savefig('./project/graphs/boxplot_%d.pdf' % i)
@@ -272,7 +297,7 @@ def compute_min_DCF(scores, labels, prior, Cfn, Cfp):
     return np.array(dcf).min()
 
 # roc diagram 
-def roc(llr, labels, bool_save):
+def roc(llr, labels, title, bool_save):
     thresholds = np.array(llr)
     thresholds.sort()
     thresholds = np.concatenate([np.array([-np.inf]), thresholds, np.array([np.inf])])
@@ -287,9 +312,11 @@ def roc(llr, labels, bool_save):
         FPR[idx] = confusion[1,0] / (confusion[1,0] + confusion[0,0])
     
     plt.figure()
-    plt.xlabel("FPR")
-    plt.ylabel("TPR")
-    plt.plot(FPR, TPR)
+    plt.xlabel("FPR - False positive rate")
+    plt.ylabel("TPR - True Positive Rate")
+    plt.title(title)
+    plt.plot(FPR, TPR, color='navy')
+    plt.grid(axis='x', color='0.95')
     plt.tight_layout()
     plt.show()
     if bool_save:
@@ -376,7 +403,7 @@ def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, False)
+        roc(llr, LTE, "Multivariate Gaussian Classifier ROC graph", False)
     
         parray = np.linspace(-3, 3, 21)
         bayes_dcf = bayes_plots(llr, LTE, parray, False)
@@ -460,7 +487,7 @@ def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
 
     if (see_graphs):
-        roc(llr, LTE, False)
+        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier ROC graph", False)
 
         parray = np.linspace(-3, 3, 21)
         bayes_dcf = bayes_plots(llr, LTE, parray, False)
@@ -541,7 +568,7 @@ def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, False)
+        roc(llr, LTE, "Multivariate Gaussian Classifier with Tied Covariance ROC graph", False)
 
         parray = np.linspace(-3, 3, 21)
         bayes_dcf = bayes_plots(llr, LTE, parray, False)
@@ -622,7 +649,7 @@ def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, False)
+        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier with Tied Covariance ROC graph", False)
 
         parray = np.linspace(-3, 3, 21)
         bayes_dcf = bayes_plots(llr, LTE, parray, False)
