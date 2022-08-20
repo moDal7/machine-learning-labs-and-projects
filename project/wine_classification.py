@@ -314,7 +314,7 @@ def roc(llr, labels, title, bool_save):
     plt.figure()
     plt.xlabel("FPR - False positive rate")
     plt.ylabel("TPR - True Positive Rate")
-    plt.title(title)
+    plt.title(title, fontsize = 10)
     plt.plot(FPR, TPR, color='navy')
     plt.grid(axis='x', color='0.95')
     plt.tight_layout()
@@ -334,8 +334,26 @@ def bayes_plots(scores, labels, parray, minCost = False):
     
     return np.array(y)
 
+def bayesplt(llr, LTE, title):
+    parray = np.linspace(-3, 3, 21)
+    bayes_dcf = bayes_plots(llr, LTE, parray, False)
+    bayes_min = bayes_plots(llr, LTE, parray, True)
+    plt.figure()
+    plt.xlabel("p")
+    plt.ylabel("DCF")
+    plt.title(title)
+    plt.plot(parray, bayes_dcf, color='firebrick')
+    plt.plot(parray, bayes_min, color='navy')
+    red_patch = mpatches.Patch(color='firebrick', label='DCF')
+    blue_patch = mpatches.Patch(color='navy', label='min DCF')
+    plt.legend(handles=[red_patch, blue_patch])
+    plt.grid(axis='x', color='0.95')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 # wrapper function for the various steps of MVG classifier
-def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
+def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -403,21 +421,12 @@ def multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, "Multivariate Gaussian Classifier ROC graph", False)
-    
-        parray = np.linspace(-3, 3, 21)
-        bayes_dcf = bayes_plots(llr, LTE, parray, False)
-        bayes_min = bayes_plots(llr, LTE, parray, True)
-        plt.figure()
-        plt.xlabel("p")
-        plt.ylabel("DCF")
-        plt.plot(parray, bayes_dcf)
-        plt.plot(parray, bayes_min)
-        plt.tight_layout()
-        plt.show()
+        roc(llr, LTE, "Multivariate Gaussian Classifier ROC graph" + " - " + datatype, False)
+        bayesplt(llr, LTE, "Multivariate Gaussian Classifier bayes plot" + " - " + datatype)
+        
 
 # wrapper function for the various steps of MVG classifier with Naive Bayes hypothesis
-def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
+def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -487,21 +496,11 @@ def naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
 
 
     if (see_graphs):
-        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier ROC graph", False)
-
-        parray = np.linspace(-3, 3, 21)
-        bayes_dcf = bayes_plots(llr, LTE, parray, False)
-        bayes_min = bayes_plots(llr, LTE, parray, True)
-        plt.figure()
-        plt.xlabel("p")
-        plt.ylabel("DCF")
-        plt.plot(parray, bayes_dcf)
-        plt.plot(parray, bayes_min)
-        plt.tight_layout()
-        plt.show()
+        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier ROC graph" + " - " + datatype, False)
+        bayesplt(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier bayes plot" + " - " + datatype)
 
 # wrapper function for the various steps of MVG classifier with Tied covariances matrix
-def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
+def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -568,21 +567,11 @@ def tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, "Multivariate Gaussian Classifier with Tied Covariance ROC graph", False)
-
-        parray = np.linspace(-3, 3, 21)
-        bayes_dcf = bayes_plots(llr, LTE, parray, False)
-        bayes_min = bayes_plots(llr, LTE, parray, True)
-        plt.figure()
-        plt.xlabel("p")
-        plt.ylabel("DCF")
-        plt.plot(parray, bayes_dcf)
-        plt.plot(parray, bayes_min)
-        plt.tight_layout()
-        plt.show()
+        roc(llr, LTE, "Multivariate Gaussian Classifier with Tied Covariance ROC graph" + " - " + datatype, False)
+        bayesplt(llr, LTE, "Multivariate Gaussian Classifier with Tied Covariance bayes plot" + " - " + datatype)
 
 # wrapper function for the various steps of MVG classifier with Naive Bayes hypothesis and tied covariance matrix
-def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
+def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -649,18 +638,8 @@ def tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE):
     print()
 
     if (see_graphs):
-        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier with Tied Covariance ROC graph", False)
-
-        parray = np.linspace(-3, 3, 21)
-        bayes_dcf = bayes_plots(llr, LTE, parray, False)
-        bayes_min = bayes_plots(llr, LTE, parray, True)
-        plt.figure()
-        plt.xlabel("p")
-        plt.ylabel("DCF")
-        plt.plot(parray, bayes_dcf)
-        plt.plot(parray, bayes_min)
-        plt.tight_layout()
-        plt.show()
+        roc(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier with Tied Covariance ROC graph" + " - " + datatype, False)
+        bayesplt(llr, LTE, "Naive Bayes Multivariate Gaussian Classifier with Tied Covariance bayes plot" + " - " + datatype)
 
 # wrapper function for logistic regression
 def logreg_wrapper(DTR, LTR, l):
@@ -676,7 +655,7 @@ def logreg_wrapper(DTR, LTR, l):
 
 # function to perform the classification with logistic regression, transforming the scores into scores with
 # probability interpretation, to be able to perform Min DCF computation
-def logistic_regression(DTR, LTR, DTE, LTE, lamb):
+def logistic_regression(DTR, LTR, DTE, LTE, lamb, datatype):
     logreg_obj = logreg_wrapper(DTR, LTR, lamb)
     _v, _J, _d = so.fmin_l_bfgs_b(logreg_obj, np.zeros(DTR.shape[0]+1), approx_grad = True)
     _w = _v[0:DTR.shape[0]]
@@ -741,6 +720,10 @@ def logistic_regression(DTR, LTR, DTE, LTE, lamb):
     print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
     print("Minimum DCF: %f" % (min_DCF))
     print()
+
+    if(see_graphs):
+        roc(scores, LTE, "Logistic Regression ROC graph" + " - " + datatype, False)
+        bayesplt(scores, LTE, "Logistic Regression bayes plot" + " - " + datatype)
 
 # Support Vector Machine linear classifier 
 def svm_linear(DTR, LTR, C, K = 1):
@@ -967,7 +950,7 @@ def eigen_constraint(cov):
 
 
 # GMM classifier wrapper function
-def GMM_classifier(DTR, LTR, DTE, LTE):
+def GMM_classifier(DTR, LTR, DTE, LTE, datatype ):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -1282,16 +1265,16 @@ if __name__ == '__main__':
     '''
     print()
     print("MVG with raw data:")
-    multivariate_gaussian_classifier(DTR, LTR, DTE, LTE)
+    multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("MVG with gaussianized data:")
-    multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE)
+    multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("MVG with PCA with components = 10 and raw data:")
-    multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA")
     print()
     print("MVG with PCA with components = 10 and gaussianized data:")
-    multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1300,16 +1283,16 @@ if __name__ == '__main__':
     '''
     print()
     print("Naive Bayes MVG with raw data:")
-    naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE)
+    naive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("Naive Bayes MVG with gaussianized data:")
-    naive_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE)
+    naive_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("Naive Bayes MVG with PCA with components = 10 and raw data:")
-    naive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    naive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
     print("Naive Bayes MVG with PCA with components = 10 and gaussianized data:")
-    naive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    naive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1318,16 +1301,16 @@ if __name__ == '__main__':
     '''
     print()
     print("Tied covariance MVG with raw data:")
-    tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE)
+    tiedcov_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("Tied Covariance MVG with gaussianized data:")
-    tiedcov_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE)
+    tiedcov_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("Tied Covariance MVG with PCA with components = 10 and raw data:")
-    tiedcov_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    tiedcov_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
     print("Tied Covariance MVG with PCA with components = 10 and gaussianized data:")
-    tiedcov_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    tiedcov_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1336,16 +1319,16 @@ if __name__ == '__main__':
     '''
     print()
     print("Tied Naive covariance MVG with raw data:")
-    tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE)
+    tiednaive_multivariate_gaussian_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("Tied Naive Covariance MVG with gaussianized data:")
-    tiednaive_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE)
+    tiednaive_multivariate_gaussian_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("Tied Naive Covariance MVG with PCA with components = 10 and raw data:")
-    tiednaive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    tiednaive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
     print("Tied Naive Covariance MVG with PCA with components = 10 and gaussianized data:")
-    tiednaive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    tiednaive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1355,7 +1338,7 @@ if __name__ == '__main__':
         print()
         print("")
         print("Lambda value: %2f" % lamb)
-        logistic_regression(DTR, LTR, DTE, LTE, lamb)
+        logistic_regression(DTR, LTR, DTE, LTE, lamb, "raw data")
     
     print()
     print("/////////////////////////////////////////////////////////////")
@@ -1366,7 +1349,7 @@ if __name__ == '__main__':
         print()
         print("")
         print("Lambda value: %2f" % lamb)
-        logistic_regression(DTR_g, LTR, DTE_g, LTE, lamb)
+        logistic_regression(DTR_g, LTR, DTE_g, LTE, lamb, "gaussianized data")
     
     print()
     print("/////////////////////////////////////////////////////////////")
@@ -1377,7 +1360,7 @@ if __name__ == '__main__':
         print()
         print("Lambda value: %2f" % lamb)
         print()
-        logistic_regression(pca_DTR, LTR, pca_DTE, LTE, lamb)
+        logistic_regression(pca_DTR, LTR, pca_DTE, LTE, lamb, "PCA data")
     
     print()
     print("/////////////////////////////////////////////////////////////")
@@ -1387,16 +1370,16 @@ if __name__ == '__main__':
     '''
     print()
     print("GMM with raw data:")
-    GMM_classifier(DTR, LTR, DTE, LTE)
+    GMM_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("GMM with gaussianized data:")
-    GMM_classifier(DTR_g, LTR, DTE_g, LTE)
+    GMM_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("GMM with PCA with components = 10 and raw data:")
-    GMM_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    GMM_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
     print("GMM with PCA with components = 10 and gaussianized data:")
-    GMM_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    GMM_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1405,16 +1388,16 @@ if __name__ == '__main__':
     '''
     print()
     print("GMM naive Bayes with raw data:")
-    GMM_naivebayes_classifier(DTR, LTR, DTE, LTE)
+    GMM_naivebayes_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("GMM naive Bayes with gaussianized data:")
-    GMM_naivebayes_classifier(DTR_g, LTR, DTE_g, LTE)
+    GMM_naivebayes_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("GMM naive Bayes with PCA with components = 10 and raw data:")
-    GMM_naivebayes_classifier(pca_DTR, LTR, pca_DTE, LTE)
+    GMM_naivebayes_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
     print("GMM naive Bayes with PCA with components = 10 and gaussianized data:")
-    GMM_naivebayes_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE)
+    GMM_naivebayes_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
@@ -1423,21 +1406,20 @@ if __name__ == '__main__':
     '''
     print()
     print("GMM tied covariance with raw data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("GMM tied covariance with gaussianized data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "gaussianized data")
     print()
     print("GMM tied covariance with PCA with components = 10 and raw data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "PCA data")
     print()
     print("GMM tied covariance with PCA with components = 10 and gaussianized data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE)
+    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
         
     # support_vector_machines(DTR, LTR, DTE, LTE)
-    # fix graphs / make em prettier
     # save graphs
     # write the report ehy ?
