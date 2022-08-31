@@ -6,6 +6,7 @@ from scipy.stats import norm
 import scipy.stats as ss
 import scipy.optimize as so
 import scipy.special as sp
+from sklearn.model_selection import KFold
 
 
 # files loaded into numpy arrays
@@ -50,6 +51,17 @@ def compute_cov(X):
     mu = compute_mean(X)
     return np.dot((X-mu), (X-mu).T)/X.shape[1]
 
+def compute_variance(X):
+
+    variance=np.array([])
+
+    for i in range(X.shape[0]):
+        row = X[i,:]
+        variance_row = np.var(row)
+        variance = np.append(variance, variance_row)
+
+    return variance.reshape(variance.size, 1)
+
 # function to compute the correlation matrix of the dataset, and to plot the correlation heatmap
 def correlation_matrix(data, feature_names):
     correlation = np.corrcoef(data)
@@ -74,6 +86,19 @@ def correlation_matrix(data, feature_names):
     ax.set_title("Correlation Coefficients")
     fig.tight_layout()
     plt.show()  
+'''
+def kfold_split(D, L, k, seed=0):
+    nTest = int(D.shape[1]*(1/k))
+    np.random.seed(seed)
+    idx = np.random.permutation(D.shape[1])
+    idxTrain = idx[0:nTrain]
+    idxTest = idx[nTrain:]
+    DTR = D[:, idxTrain]
+    DTE = D[:, idxTest]
+    LTR = L[idxTrain]
+    LTE = L[idxTest]
+    return DTR, LTR, DTE, LTE
+'''
 
 # general exploratory data analysis of the whole dataset, featuring means, covariance matrix and skewness of the data
 # prints out the data on the terminal
@@ -81,19 +106,22 @@ def eda(data, labels, feature_names):
     mean = compute_mean(data)
     mean_0 = compute_mean(data[:, labels[0, :]==0])
     mean_1 = compute_mean(data[:, labels[0, :]==1])
+    variance = compute_variance(data)
     cov = compute_cov(data)
     skew = ss.skew(data)
 
     for i in range(len(feature_names)):
         print()
-        print("Feature %d, %s has the following properties:" % (i+1, feature_names[i]))
+        print("Feature %d, %s has the following properties:" % (i, feature_names[i]))
         print()
         print("Mean is %3f" % (mean[i]))
         print("Mean computed for class %d, is %3f" % (0, mean_0[i]))
         print("Mean computed for class %d, is %3f" % (1, mean_1[i]))
         print()
-        print("Skewness is %3f" % (skew[i]))
+        print("Variance is %3f" % (variance[i]))
         print()
+        print("Skewness is %3f" % (skew[i]))
+        print() 
         print("/////////////////////////////////////////////////////////////")
         print()
 
@@ -342,13 +370,12 @@ def bayesplt(llr, LTE, title):
     plt.xlabel("p")
     plt.ylabel("DCF")
     plt.title(title)
-    plt.plot(parray, bayes_dcf, color='firebrick')
-    plt.plot(parray, bayes_min, color='navy')
     red_patch = mpatches.Patch(color='firebrick', label='DCF')
     blue_patch = mpatches.Patch(color='navy', label='min DCF')
     plt.legend(handles=[red_patch, blue_patch])
+    plt.plot(parray, bayes_dcf, color='firebrick')
+    plt.plot(parray, bayes_min, color='navy')
     plt.grid(axis='x', color='0.95')
-    plt.legend()
     plt.tight_layout()
     plt.show()
 
@@ -655,7 +682,7 @@ def logreg_wrapper(DTR, LTR, l):
 
 # function to perform the classification with logistic regression, transforming the scores into scores with
 # probability interpretation, to be able to perform Min DCF computation
-def logistic_regression(DTR, LTR, DTE, LTE, lamb, datatype):
+def logistic_regression(DTR, LTR, DTE, LTE, lamb, datatype, crossval = False):
     logreg_obj = logreg_wrapper(DTR, LTR, lamb)
     _v, _J, _d = so.fmin_l_bfgs_b(logreg_obj, np.zeros(DTR.shape[0]+1), approx_grad = True)
     _w = _v[0:DTR.shape[0]]
@@ -716,19 +743,24 @@ def logistic_regression(DTR, LTR, DTE, LTE, lamb, datatype):
     Cfp = 1
     min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
 
+    
     print("Empirical prior test:")
     print("Application parameters: (Prior %1f, Cfn %d, Cfp %d)" % (prior, Cfn, Cfp))
     print("Minimum DCF: %f" % (min_DCF))
     print()
 
+
     if(see_graphs):
         roc(scores, LTE, "Logistic Regression ROC graph" + " - " + datatype, False)
         bayesplt(scores, LTE, "Logistic Regression bayes plot" + " - " + datatype)
 
-# Support Vector Machine linear classifier 
+    if crossval:
+        return min_DCF
+
+# Support Vector Machine linear classifier trainer
 def svm_linear(DTR, LTR, C, K = 1):
 
-    DTREXT = np.vstack([DTR, np.ones(1, DTR.shape[1])*K])
+    DTREXT = np.vstack([DTR, np.ones(DTR.shape[1])*K])
 
     z = np.zeros(LTR.shape)
     z[LTR == 1] = 1
@@ -759,12 +791,153 @@ def svm_linear(DTR, LTR, C, K = 1):
         Ldual,
         np.zeros(DTR.shape[1]),
         bounds = [(0, C)] * DTR.shape[1],
-        factr = 1.0,
+        factr = 0.0,
         maxiter = 100000,
         maxfun = 100000,
         )
 
-    wstar = np.dot(DTREXT, mcol(alphastar) * mcol(z))
+    wstar = np.dot(DTREXT, mcol(alphastar)* mcol(z))
+
+    return wstar
+
+def svm_RBF(DTR, LTR, C, gamma, K = 1):
+
+    z = np.zeros(LTR.shape)
+    z[LTR == 1] = 1
+    z[LTR == 0] = -1
+
+    # Hij matrix, second operation exploits broadcasting to perform the multiplication
+    Dist = mcol((DTR**2).sum(0)) + mrow((DTR**2).sum(0))-2*np.dot(DTR.T, DTR)
+    H = np.exp(-gamma*Dist) + K**2
+    H = mcol(z)*mrow(z)*H
+
+    # alpha is the Lagrangian multiplier
+    def Jdual(alpha):
+        Ha = np.dot(H, mcol(alpha))
+        aHa = np.dot(mrow(alpha), Ha)
+        a1 = alpha.sum()
+
+        return -0.5 * aHa.ravel() + a1,  -Ha.ravel() + np.ones(alpha.size)
+
+    def Ldual(alpha):
+        loss, grad = Jdual(alpha)
+        return -loss, -grad
+        
+    alphastar, _x, _y = so.fmin_l_bfgs_b(
+        Ldual,
+        np.zeros(DTR.shape[1]),
+        bounds = [(0, C)] * DTR.shape[1],
+        factr = 0,
+        maxiter = 400000,
+        maxfun = 200000,
+        )
+
+    return alphastar, z
+
+def svm_poly(DTR, LTR, C, c, d, K = 1):
+
+    z = np.zeros(LTR.shape)
+    z[LTR == 1] = 1
+    z[LTR == 0] = -1
+
+    # Hij matrix, second operation exploits broadcasting to perform the multiplication
+    xTx = np.dot(DTR.T, DTR) + c
+    H = xTx**d + K**2
+    H = mcol(z)*mrow(z)*H
+
+    # alpha is the Lagrangian multiplier
+    def Jdual(alpha):
+        Ha = np.dot(H, mcol(alpha))
+        aHa = np.dot(mrow(alpha), Ha)
+        a1 = alpha.sum()
+
+        return -0.5 * aHa.ravel() + a1,  -Ha.ravel() + np.ones(alpha.size)
+
+    def Ldual(alpha):
+        loss, grad = Jdual(alpha)
+        return -loss, -grad
+        
+    alphastar, _x, _y = so.fmin_l_bfgs_b(
+        Ldual,
+        np.zeros(DTR.shape[1]),
+        bounds = [(0, C)] * DTR.shape[1],
+        factr = 0,
+        maxiter = 400000,
+        maxfun = 200000,
+        )
+
+    return alphastar, z
+
+# Support Vector Machine scorer
+def svm_scoring(DTE, LTE, wstar, K):
+
+    wstar = np.array(wstar)
+    wstar = mcol(wstar)
+    DTEEXT = np.vstack([DTE, np.ones(DTE.shape[1])*K])
+    scores = np.dot(wstar.T, DTEEXT)
+    scores_array = scores[0, :]
+    # pseudo-application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores_array, LTE, prior, Cfn, Cfp)
+
+    print("SVM Scoring")
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+# Support Vector Machine scorer
+def svm_RBF_scoring(DTE, LTE, DTR, K, gamma, alphastar, z):
+
+    scores = np.zeros(DTE.shape[1])
+    Dist = np.zeros(shape = (DTE.shape[1], DTR.shape[1]))
+
+    for i in range(DTE.shape[1]):
+        scoresToSum = 0
+        for j in range(DTR.shape[1]):
+            xi = DTE[:, i]
+            xj = DTR[:, j]
+            Dist[i, j] = np.linalg.norm(xi-xj)**2
+            toSum = alphastar[j]*z[0, j]*(np.exp(-gamma*Dist[i,j])+K**2)
+            scoresToSum = scoresToSum + toSum
+        scores[i] = scoresToSum
+    
+    # pseudo-application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("SVM Scoring")
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
+# Support Vector Machine scorer
+def svm_poly_scoring(DTE, LTE, DTR, K, c, d, alphastar, z):
+
+    scores = np.zeros(DTE.shape[1])
+    Dist = np.zeros(shape = (DTE.shape[1], DTR.shape[1]))
+
+    for i in range(DTE.shape[1]):
+        scoresToSum = 0
+        for j in range(DTR.shape[1]):
+            xi = DTE[:, i]
+            xj = DTR[:, j]
+            Dist[i, j] = ((np.dot(xj.T, xi) + c))**d + K**2
+            toSum = alphastar[j]*z[0, j]*Dist[i, j]
+            scoresToSum = scoresToSum + toSum
+        scores[i] = scoresToSum
+    
+    # pseudo-application parameters
+    prior = 0.5
+    Cfn = 1
+    Cfp = 1
+    min_DCF = compute_min_DCF(scores, LTE, prior, Cfn, Cfp)
+
+    print("SVM Scoring")
+    print("Minimum DCF: %f" % (min_DCF))
+    print()
+
 
 # Gaussian Mixture Model per sample log-likelihood computation 
 def GMM_ll_perSample(X, gmm):
@@ -970,9 +1143,13 @@ def GMM_classifier(DTR, LTR, DTE, LTE, datatype ):
     gmm_class0 = GMM_EM(DTR_0, gmm_class0)
     gmm_class0 = GMM_lbg(gmm_class0, False)
     gmm_class0 = GMM_EM(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM(DTR_0, gmm_class0)
 
     gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
     gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM(DTR_1, gmm_class1)
     gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM(DTR_1, gmm_class1)
@@ -1031,7 +1208,7 @@ def GMM_classifier(DTR, LTR, DTE, LTE, datatype ):
     print()
 
 # GMM classifier with naive Bayes hypothesis wrapper function
-def GMM_naivebayes_classifier(DTR, LTR, DTE, LTE):
+def GMM_naivebayes_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -1051,9 +1228,13 @@ def GMM_naivebayes_classifier(DTR, LTR, DTE, LTE):
     gmm_class0 = GMM_EM_diagonal(DTR_0, gmm_class0)
     gmm_class0 = GMM_lbg(gmm_class0, False)
     gmm_class0 = GMM_EM_diagonal(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM_diagonal(DTR_0, gmm_class0)
 
     gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
     gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM_diagonal(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM_diagonal(DTR_1, gmm_class1)
     gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM_diagonal(DTR_1, gmm_class1)
@@ -1112,7 +1293,7 @@ def GMM_naivebayes_classifier(DTR, LTR, DTE, LTE):
     print()
 
 # GMM classifier with Tied Covariance wrapper function
-def GMM_tiedcov_classifier(DTR, LTR, DTE, LTE):
+def GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, datatype):
 
     DTR_0 = DTR[:, LTR[0, :]==0]
     DTR_1 = DTR[:, LTR[0, :]==1]
@@ -1132,9 +1313,13 @@ def GMM_tiedcov_classifier(DTR, LTR, DTE, LTE):
     gmm_class0 = GMM_EM_tied(DTR_0, gmm_class0)
     gmm_class0 = GMM_lbg(gmm_class0, False)
     gmm_class0 = GMM_EM_tied(DTR_0, gmm_class0)
+    gmm_class0 = GMM_lbg(gmm_class0, False)
+    gmm_class0 = GMM_EM_tied(DTR_0, gmm_class0)
 
     gmm_class1 = np.array([1, mu_1, cov_1], dtype=object)
     gmm_class1 = GMM_lbg(gmm_class1, True)
+    gmm_class1 = GMM_EM_tied(DTR_1, gmm_class1)
+    gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM_tied(DTR_1, gmm_class1)
     gmm_class1 = GMM_lbg(gmm_class1, False)
     gmm_class1 = GMM_EM_tied(DTR_1, gmm_class1)
@@ -1258,7 +1443,8 @@ if __name__ == '__main__':
     pca_DTR_g = gaussianization(pca_DTR)
     pca_DTE = pca(DTE, cov, 10)
     pca_DTE_g = gaussianization(pca_DTE)
-
+    pca_DTR5 = pca(DTR, cov, 5)
+    pca_DTE5 = pca(DTE, cov, 5) 
     
     '''
     multivariate gaussian classifier results
@@ -1272,6 +1458,9 @@ if __name__ == '__main__':
     print()
     print("MVG with PCA with components = 10 and raw data:")
     multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA")
+    print()
+    print("MVG with PCA with components = 5 and raw data:")
+    multivariate_gaussian_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA - m=5")
     print()
     print("MVG with PCA with components = 10 and gaussianized data:")
     multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
@@ -1291,6 +1480,9 @@ if __name__ == '__main__':
     print("Naive Bayes MVG with PCA with components = 10 and raw data:")
     naive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
+    print("Naive Bayes MVG with PCA with components = 5 and raw data:")
+    naive_multivariate_gaussian_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data - m=5")
+    print()
     print("Naive Bayes MVG with PCA with components = 10 and gaussianized data:")
     naive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
@@ -1308,6 +1500,10 @@ if __name__ == '__main__':
     print()
     print("Tied Covariance MVG with PCA with components = 10 and raw data:")
     tiedcov_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
+    print()
+    print()
+    print("Tied Covariance MVG with PCA with components = 5 and raw data:")
+    tiedcov_multivariate_gaussian_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data - m=5")
     print()
     print("Tied Covariance MVG with PCA with components = 10 and gaussianized data:")
     tiedcov_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
@@ -1327,12 +1523,44 @@ if __name__ == '__main__':
     print("Tied Naive Covariance MVG with PCA with components = 10 and raw data:")
     tiednaive_multivariate_gaussian_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
+    print("Tied Naive Covariance MVG with PCA with components = 5 and raw data:")
+    tiednaive_multivariate_gaussian_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data - m=5")
+    print()
     print("Tied Naive Covariance MVG with PCA with components = 10 and gaussianized data:")
     tiednaive_multivariate_gaussian_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
 
     print()
+    print("Logistic Regression:")
+    
+    kf = KFold(n_splits=5, shuffle = True)
+
+    lambda_toTest = [1e-8, 5e-8, 1e-7, 5e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5, 1.0]
+    minDCF = 1
+    chosen_lamb = 10
+
+    for lamb in lambda_toTest:
+        
+        print("Test on lambda = %2f" % lamb)
+        dcf = 0
+
+        for train_index, test_index in kf.split(DTR[0, :]):
+            X_train, X_test = DTR[:, train_index], DTR[:, test_index]
+            y_train, y_test = LTR[:, train_index], LTR[:, test_index]
+            
+            dcf = logistic_regression(X_train, y_train, X_test, y_test, lamb, "raw data", True) + dcf
+        
+        dcf = dcf / 5
+
+        if dcf < minDCF:
+
+            minDCF = dcf
+            chosen_lamb = lamb
+    
+    print("Best performing lambda is %f" % chosen_lamb)
+    
+    '''
     print("Raw Data")
     for lamb in [1e-6, 1e-3, 0.1, 1.0]:
         print()
@@ -1365,6 +1593,140 @@ if __name__ == '__main__':
     print()
     print("/////////////////////////////////////////////////////////////")
 
+    print()
+    print("Pca Data m=5")
+    for lamb in [1e-6, 1e-3, 0.1, 1.0]:
+        print()
+        print("Lambda value: %2f" % lamb)
+        print()
+        logistic_regression(pca_DTR5, LTR, pca_DTE5, LTE, lamb, "PCA data - m=5")
+    '''
+    print()
+    print("/////////////////////////////////////////////////////////////")
+    
+    '''
+    support vector machine classifier results
+    '''
+    '''
+    print()
+    print("SVM with raw data:")
+    print()
+    K = 5
+    C = 0.1
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(DTR, LTR, C, K)
+    svm_scoring(DTE, LTE, wstar, K)
+    print() 
+    
+    K = 1
+    C = 0.2
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(DTR, LTR, C, K)
+    svm_scoring(DTE, LTE, wstar, K)
+    print() 
+
+    K = 1
+    C = 0.5
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(DTR, LTR, C, K)
+    svm_scoring(DTE, LTE, wstar, K)
+    print() 
+
+    K = 1
+    C = 1
+    print("K = %d" % K) 
+    print("C = %d" % C) 
+    wstar = svm_linear(DTR, LTR, C, K)
+    svm_scoring(DTE, LTE, wstar, K)
+    print()
+    
+    print()
+    print("SVM with PCA data:")
+    print()
+    K = 4
+    C = 0.05
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(pca_DTR, LTR, C, K)
+    svm_scoring(pca_DTE, LTE, wstar, K)
+    print() 
+
+    K = 1
+    C = 0.2
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(pca_DTR, LTR, C, K)
+    svm_scoring(pca_DTE, LTE, wstar, K)
+    print() 
+
+    K = 1
+    C = 0.5
+    print("K = %f" % K) 
+    print("C = %f" % C) 
+    wstar = svm_linear(pca_DTR, LTR, C, K)
+    svm_scoring(pca_DTE, LTE, wstar, K)
+    print() 
+
+    K = 1
+    C = 1
+    print("K = %d" % K) 
+    print("C = %d" % C) 
+    wstar = svm_linear(pca_DTR, LTR, C, K)
+    svm_scoring(pca_DTE, LTE, wstar, K)
+    print()
+    
+    print("RBF Kernel:")
+    K = 5
+    C = 0.1
+    gamma = 1
+    print("K = %d" % K) 
+    print("C = %2f" % C)
+    print("gamma = %d" % gamma)
+    alphastar, z = svm_RBF(DTR, LTR, C, gamma, K)
+    svm_RBF_scoring(DTE, LTE, DTR, K, gamma, alphastar, z)
+    print()
+
+    print("RBF Kernel:")
+    K = 1
+    C = 0.5
+    gamma = 10
+    print("K = %d" % K) 
+    print("C = %2f" % C)
+    print("gamma = %d" % gamma)
+    alphastar, z = svm_RBF(DTR, LTR, C, gamma, K)
+    svm_RBF_scoring(DTE, LTE, DTR, K, gamma, alphastar, z)
+    print()
+
+    print("RBF Kernel:")
+    K = 2
+    C = 1
+    gamma = 2
+    print("K = %d" % K) 
+    print("C = %2f" % C)
+    print("gamma = %d" % gamma)
+    alphastar, z = svm_RBF(DTR, LTR, C, gamma, K)
+    svm_RBF_scoring(DTE, LTE, DTR, K, gamma, alphastar, z)
+    print()
+    '''
+
+    print("Poly Kernel:")
+    K = 3
+    C = 0.1
+    c = 1
+    d = 2
+    print("K = %d" % K) 
+    print("C = %2f" % C)
+    print("c = %2f" % c)
+    print("d = %2f" % d)
+    alphastar, z = svm_poly(DTR, LTR, C, c, d, K)
+    svm_poly_scoring(DTE, LTE, DTR, K, c, d, alphastar, z)
+    print()
+    
+    print("/////////////////////////////////////////////////////////////")    
+
     '''
     gaussian mixture models classifier results
     '''
@@ -1377,6 +1739,9 @@ if __name__ == '__main__':
     print()
     print("GMM with PCA with components = 10 and raw data:")
     GMM_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
+    print()
+    print("GMM with PCA with components = 5 and raw data:")
+    GMM_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data - m=5")
     print()
     print("GMM with PCA with components = 10 and gaussianized data:")
     GMM_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
@@ -1396,6 +1761,9 @@ if __name__ == '__main__':
     print("GMM naive Bayes with PCA with components = 10 and raw data:")
     GMM_naivebayes_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
     print()
+    print("GMM naive Bayes with PCA with components = 5 and raw data:")
+    GMM_naivebayes_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data")
+    print()
     print("GMM naive Bayes with PCA with components = 10 and gaussianized data:")
     GMM_naivebayes_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
@@ -1409,17 +1777,15 @@ if __name__ == '__main__':
     GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "raw data")
     print()
     print("GMM tied covariance with gaussianized data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "gaussianized data")
+    GMM_tiedcov_classifier(DTR_g, LTR, DTE_g, LTE, "gaussianized data")
     print()
     print("GMM tied covariance with PCA with components = 10 and raw data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "PCA data")
+    GMM_tiedcov_classifier(pca_DTR, LTR, pca_DTE, LTE, "PCA data")
+    print()
+    print("GMM tied covariance with PCA with components = 5 and raw data:")
+    GMM_tiedcov_classifier(pca_DTR5, LTR, pca_DTE5, LTE, "PCA data")
     print()
     print("GMM tied covariance with PCA with components = 10 and gaussianized data:")
-    GMM_tiedcov_classifier(DTR, LTR, DTE, LTE, "PCA and gaussianized data")
+    GMM_tiedcov_classifier(pca_DTR_g, LTR, pca_DTE_g, LTE, "PCA and gaussianized data")
     print()
     print("/////////////////////////////////////////////////////////////")
-
-        
-    # support_vector_machines(DTR, LTR, DTE, LTE)
-    # save graphs
-    # write the report ehy ?
