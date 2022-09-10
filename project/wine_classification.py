@@ -1929,6 +1929,7 @@ if __name__ == '__main__':
     print()
 
     '''
+    chosen_lamb = 1e-4
 
     print()     
     print("Raw Data")
@@ -2751,7 +2752,7 @@ if __name__ == '__main__':
     print()
 
     print("Actual DCF values:")
-    
+
     alphastar, z = svm_RBF(DTR_g, LTR, chosen_c, chosen_gamma, chosen_K)
     scores = svm_RBF_scoring(DTE_g, LTE, DTR_g, chosen_K, chosen_gamma, alphastar, z, "Gaussianized Data", False, True)
     act_dcf = compute_DCF(scores, LTE, 0.5, 1, 1)

@@ -1,7 +1,6 @@
 # machine-learning-labs-and-projects
 
-Lab 3 needs finishing on the Linear Discriminant analysis exercise (second part).
+Code related to the Machine Learning and Pattern Recognition course at Politecnico di Torino, held by professor Sandro Cumani.
+The main part is the code related to the final project of the course, where we had to write a report about a classification task of a dataset chosen between three possibilities.
 
-Lab 4 -- still finishing the part with the "real" data.
-
-Lab 5 started.
+The task was performed using the least possible amount of premade machine learning packages and toolkits, and writing the algorithms ourselves. 
